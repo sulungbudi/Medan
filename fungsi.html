@@ -310,6 +310,37 @@ const FAMILIES = [
     ],
   },
   {
+    id: 'relu', name: 'ReLU: y = max(0; wx + b)',
+    params: [
+      { k: 'w', min: -3, max: 3, step: 0.1, val: 1, desc: 'bobot (kemiringan bagian aktif)' },
+      { k: 'b', min: -6, max: 6, step: 0.1, val: 0, desc: 'bias (menggeser titik patah)' },
+      { k: 'α', min: 0, max: 0.5, step: 0.01, val: 0, desc: 'kemiringan sisi negatif (0 = ReLU, > 0 = Leaky ReLU)' },
+    ],
+    f: (x, p) => { const z = p.w * x + p.b; return z >= 0 ? z : p['α'] * z; },
+    formula: p => p['α'] > 0
+      ? `${Y} = max(${num(p['α'])} · <i>z</i>; <i>z</i>),&nbsp;&nbsp; <i>z</i> = ${num(p.w)}${X}${signed(p.b)}`
+      : `${Y} = max(0; ${num(p.w)}${X}${signed(p.b)})`,
+    analyze(p) {
+      const a = p['α'], y0 = p.b >= 0 ? p.b : a * p.b;
+      const info = [], points = [{ x: 0, y: y0, label: 'potong y' }], guides = [];
+      if (Math.abs(p.w) > 1e-9) {
+        const xk = -p.b / p.w;
+        info.push(['Titik patah', pt(xk, 0)]);
+        info.push(['Bagian aktif', `${X} ${p.w > 0 ? '>' : '<'} ${num(xk)}`]);
+        points.push({ x: xk, y: 0, label: 'titik patah' });
+        guides.push({ type: 'v', v: xk });
+      } else info.push(['Catatan', 'w = 0, grafik menjadi garis mendatar']);
+      info.push(['Kemiringan aktif / pasif', `${num(p.w)} / ${num(a * p.w)}`]);
+      info.push(['Potong sumbu y', pt(0, y0)]);
+      return { info, points, guides };
+    },
+    questions: [
+      'Ubah b saja. Bagaimana titik patah bergeser? Mengapa letaknya di x = −b/w?',
+      'Apa yang terjadi jika w dibuat negatif? Di sisi mana grafik menjadi "aktif"?',
+      'ReLU adalah fungsi aktivasi pada jaringan saraf tiruan (AI). Coba α > 0 (Leaky ReLU): mengapa sisi negatif yang tidak benar-benar nol bisa membantu proses belajar AI?',
+    ],
+  },
+  {
     id: 'custom', name: 'Fungsi bebas (tulis sendiri)',
     params: [
       { k: 'a', min: -5, max: 5, step: 0.1, val: 0.2, desc: '' },
