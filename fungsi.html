@@ -1,0 +1,648 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Grafik Fungsi Interaktif</title>
+<style>
+  :root{
+    --bg:#f4f7f6; --card:#ffffff; --ink:#1b2631; --muted:#5f6b78; --line:#dde6e4;
+    --grid:#e8eeed; --axis:#7b8794; --curve:#0f7173; --ghost:#f2a541; --point:#c5523f; --guide:#8e9aa6;
+    --accent:#0f7173; --accent-ink:#ffffff; --soft:#eaf2f1;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#0f1517; --card:#172022; --ink:#e7eeec; --muted:#9db0ae; --line:#29373a;
+      --grid:#1f2b2e; --axis:#6f8285; --curve:#4fd1c5; --ghost:#f6b55c; --point:#ff7a66; --guide:#6f8285;
+      --accent:#2bb3a7; --accent-ink:#06201e; --soft:#1d2a2c;
+    }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--ink);line-height:1.45}
+  header{max-width:1150px;margin:auto;padding:18px 16px 6px}
+  h1{font-size:1.45rem;margin:0 0 4px}
+  header p{margin:0;color:var(--muted)}
+  main{max-width:1150px;margin:auto;padding:10px 16px 36px;display:grid;gap:16px;grid-template-columns:1fr}
+  @media (min-width:900px){ main{grid-template-columns:350px 1fr;align-items:start} }
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px}
+  h2{font-size:1rem;margin:0 0 10px}
+  label{font-size:.88rem;color:var(--muted)}
+  select,input[type=text]{width:100%;font:inherit;padding:9px 10px;border-radius:9px;border:1px solid var(--line);background:var(--card);color:var(--ink)}
+  .formula{margin:14px 0 6px;padding:12px 14px;border-radius:10px;background:var(--soft);font-family:Cambria,"Times New Roman",serif;font-size:1.25rem;min-height:52px;overflow-x:auto;white-space:nowrap}
+  .formula i{font-style:italic}
+  .param{display:grid;grid-template-columns:auto 1fr auto;gap:4px 10px;align-items:center;margin-top:12px}
+  .param .name{font-family:Cambria,"Times New Roman",serif;font-style:italic;font-size:1.15rem;width:22px;text-align:center}
+  .param .val{font-variant-numeric:tabular-nums;min-width:52px;text-align:right;font-weight:600}
+  .param input[type=range]{width:100%;accent-color:var(--accent)}
+  .param .desc{grid-column:2 / 4;font-size:.8rem;color:var(--muted);margin-top:-4px}
+  .play{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:8px;width:30px;height:28px;cursor:pointer;font-size:.8rem;padding:0}
+  .play.on{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+  .row{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+  button{font:inherit;padding:8px 12px;border-radius:9px;border:1px solid var(--line);background:var(--card);color:var(--ink);cursor:pointer}
+  button.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+  .checks{display:flex;flex-direction:column;gap:6px;margin-top:12px}
+  .plotwrap{position:relative}
+  canvas{display:block;width:100%;border-radius:10px;touch-action:none;cursor:grab;background:var(--card)}
+  canvas.drag{cursor:grabbing}
+  .toolbar{position:absolute;top:10px;right:10px;display:flex;gap:6px}
+  .toolbar button{width:36px;height:36px;padding:0;font-size:1.1rem;background:var(--card);opacity:.92}
+  .readout{display:flex;flex-wrap:wrap;gap:6px 22px;margin-top:10px;font-variant-numeric:tabular-nums;font-size:.95rem}
+  .legend{display:flex;gap:16px;flex-wrap:wrap;font-size:.88rem;color:var(--muted);margin-top:6px}
+  .sw{display:inline-block;width:20px;height:3px;border-radius:2px;vertical-align:middle;margin-right:6px}
+  .info{margin-top:12px;display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px}
+  .info div{background:var(--soft);border-radius:9px;padding:8px 10px;font-size:.92rem}
+  .info b{display:block;font-size:.78rem;color:var(--muted);font-weight:600}
+  .err{color:var(--point);font-size:.88rem;margin-top:6px;min-height:1.2em}
+  ol{margin:0;padding-left:20px} li{margin-bottom:6px}
+  .hint{font-size:.85rem;color:var(--muted);margin-top:8px}
+  .span2{grid-column:1 / -1}
+  @media (max-width:899px){ .plotcard{order:-1} }
+</style>
+</head>
+<body>
+<header>
+  <h1>Grafik Fungsi Interaktif</h1>
+  <p>Geser parameter dan amati bagaimana grafik berubah seketika.</p>
+</header>
+
+<main>
+  <section class="card" id="controls">
+    <label for="family">Jenis fungsi</label>
+    <select id="family"></select>
+
+    <div id="customBox" style="display:none;margin-top:12px">
+      <label for="expr">Tulis fungsi dalam <i>x</i> (boleh memakai a, b, c, d)</label>
+      <input id="expr" type="text" spellcheck="false" autocomplete="off">
+      <div class="hint">Contoh: <code>a*x^3 + b*x^2 + c*x + d</code>, <code>a*sin(b*x)*exp(-c*x^2)</code>. Gunakan tanda * untuk perkalian.</div>
+      <div class="err" id="exprErr"></div>
+    </div>
+
+    <div class="formula" id="formula"></div>
+    <div id="params"></div>
+
+    <div class="checks">
+      <label><input type="checkbox" id="showPoints" checked> Tampilkan titik penting</label>
+      <label><input type="checkbox" id="showGuides" checked> Tampilkan garis bantu (asimtot, sumbu simetri)</label>
+    </div>
+    <div class="row">
+      <button class="primary" id="btnGhost">Simpan sebagai pembanding</button>
+      <button id="btnClearGhost">Hapus pembanding</button>
+      <button id="btnReset">Reset parameter</button>
+    </div>
+  </section>
+
+  <section class="card plotcard">
+    <div class="plotwrap">
+      <canvas id="plot"></canvas>
+      <div class="toolbar">
+        <button id="zoomIn" title="Perbesar" aria-label="Perbesar">+</button>
+        <button id="zoomOut" title="Perkecil" aria-label="Perkecil">−</button>
+        <button id="zoomReset" title="Tampilan awal" aria-label="Tampilan awal">⟲</button>
+      </div>
+    </div>
+    <div class="readout">
+      <span>Kursor: <b id="cursorOut">–</b></span>
+      <span>Skala: <b id="scaleOut">–</b></span>
+    </div>
+    <div class="legend">
+      <span><span class="sw" style="background:var(--curve)"></span>Grafik sekarang</span>
+      <span><span class="sw" style="background:var(--ghost)"></span>Pembanding</span>
+      <span><span class="sw" style="background:var(--point);height:8px;width:8px;border-radius:50%"></span>Titik penting</span>
+    </div>
+    <div class="info" id="info"></div>
+    <p class="hint">Geser grafik dengan menyeret. Perbesar dengan scroll mouse, cubit dua jari, atau tombol +/−.</p>
+  </section>
+
+  <section class="card span2">
+    <h2>Pertanyaan eksplorasi</h2>
+    <ol id="questions"></ol>
+  </section>
+</main>
+
+<script>
+/* ================= Utilitas angka (format Indonesia) ================= */
+function num(v, d = 2) {
+  if (!isFinite(v)) return v > 0 ? '∞' : (v < 0 ? '−∞' : 'tak terdefinisi');
+  let s = (+v).toFixed(d);
+  if (s.indexOf('.') >= 0) s = s.replace(/0+$/, '').replace(/\.$/, '');
+  if (s === '-0') s = '0';
+  return s.replace('-', '−').replace('.', ',');
+}
+const signed = (v, d = 2) => (v < 0 ? ' − ' : ' + ') + num(Math.abs(v), d);
+const pt = (x, y) => `(${num(x)}; ${num(y)})`;
+const X = '<i>x</i>', Y = '<i>y</i>';
+
+/* ================= Definisi keluarga fungsi ================= */
+const FAMILIES = [
+  {
+    id: 'linear', name: 'Linear: y = mx + c',
+    params: [
+      { k: 'm', min: -5, max: 5, step: 0.1, val: 1, desc: 'gradien (kemiringan)' },
+      { k: 'c', min: -8, max: 8, step: 0.1, val: 0, desc: 'titik potong sumbu y' },
+    ],
+    f: (x, p) => p.m * x + p.c,
+    formula: p => `${Y} = ${num(p.m)}${X}${signed(p.c)}`,
+    analyze(p) {
+      const info = [['Gradien', num(p.m)], ['Potong sumbu y', pt(0, p.c)]];
+      const points = [{ x: 0, y: p.c, label: 'potong y' }];
+      if (p.m !== 0) { const r = -p.c / p.m; info.push(['Potong sumbu x', pt(r, 0)]); points.push({ x: r, y: 0, label: 'akar' }); }
+      else info.push(['Potong sumbu x', p.c === 0 ? 'seluruh sumbu x' : 'tidak ada (garis mendatar)']);
+      info.push(['Sudut kemiringan', num(Math.atan(p.m) * 180 / Math.PI, 1) + '°']);
+      return { info, points, guides: [] };
+    },
+    questions: [
+      'Apa yang terjadi pada grafik jika m dibuat negatif? Bagaimana jika m = 0?',
+      'Simpan grafik sebagai pembanding, lalu ubah c saja. Apakah kemiringan garis berubah?',
+      'Cari nilai m dan c agar garis melalui titik (2; 5) dan (−1; −1).',
+    ],
+  },
+  {
+    id: 'quad', name: 'Kuadrat: y = ax² + bx + c',
+    params: [
+      { k: 'a', min: -3, max: 3, step: 0.1, val: 1, desc: 'kelengkungan dan arah buka' },
+      { k: 'b', min: -8, max: 8, step: 0.1, val: 0, desc: 'menggeser puncak ke samping' },
+      { k: 'c', min: -8, max: 8, step: 0.1, val: -2, desc: 'titik potong sumbu y' },
+    ],
+    f: (x, p) => p.a * x * x + p.b * x + p.c,
+    formula: p => `${Y} = ${num(p.a)}${X}<sup>2</sup>${signed(p.b)}${X}${signed(p.c)}`,
+    analyze(p) {
+      const info = [], points = [{ x: 0, y: p.c, label: 'potong y' }], guides = [];
+      if (Math.abs(p.a) < 1e-9) {
+        info.push(['Catatan', 'a = 0, fungsi menjadi linear']);
+        if (p.b !== 0) points.push({ x: -p.c / p.b, y: 0, label: 'akar' });
+        return { info, points, guides };
+      }
+      const D = p.b * p.b - 4 * p.a * p.c, xv = -p.b / (2 * p.a), yv = p.c - p.b * p.b / (4 * p.a);
+      info.push(['Diskriminan D', num(D)]);
+      info.push(['Titik puncak', pt(xv, yv) + (p.a > 0 ? ' (minimum)' : ' (maksimum)')]);
+      points.push({ x: xv, y: yv, label: 'puncak' });
+      guides.push({ type: 'v', v: xv });
+      if (D > 0) {
+        const r1 = (-p.b - Math.sqrt(D)) / (2 * p.a), r2 = (-p.b + Math.sqrt(D)) / (2 * p.a);
+        info.push(['Akar-akar', `${X} = ${num(Math.min(r1, r2))} dan ${num(Math.max(r1, r2))}`]);
+        points.push({ x: r1, y: 0, label: 'akar' }, { x: r2, y: 0, label: 'akar' });
+      } else if (D === 0) {
+        info.push(['Akar', `${X} = ${num(xv)} (kembar)`]);
+      } else info.push(['Akar', 'tidak ada akar real (D < 0)']);
+      info.push(['Sumbu simetri', `${X} = ${num(xv)}`]);
+      return { info, points, guides };
+    },
+    questions: [
+      'Bagaimana bentuk grafik jika a negatif? Apa yang terjadi saat a mendekati 0?',
+      'Ubah b saja. Lintasan apa yang dibentuk titik puncak saat b digeser? (Gunakan tombol ▶ pada b.)',
+      'Kapan grafik tidak memotong sumbu x? Hubungkan dengan nilai diskriminan D.',
+    ],
+  },
+  {
+    id: 'vertex', name: 'Kuadrat bentuk puncak: y = a(x − h)² + k',
+    params: [
+      { k: 'a', min: -3, max: 3, step: 0.1, val: 1, desc: 'kelengkungan dan arah buka' },
+      { k: 'h', min: -8, max: 8, step: 0.1, val: 0, desc: 'geser kanan/kiri' },
+      { k: 'k', min: -8, max: 8, step: 0.1, val: 0, desc: 'geser atas/bawah' },
+    ],
+    f: (x, p) => p.a * (x - p.h) ** 2 + p.k,
+    formula: p => `${Y} = ${num(p.a)}(${X}${signed(-p.h)})<sup>2</sup>${signed(p.k)}`,
+    analyze(p) {
+      const info = [['Titik puncak', pt(p.h, p.k)]], points = [{ x: p.h, y: p.k, label: 'puncak' }];
+      const guides = [{ type: 'v', v: p.h }];
+      if (Math.abs(p.a) > 1e-9) {
+        const q = -p.k / p.a;
+        if (q > 0) {
+          const r = Math.sqrt(q);
+          info.push(['Akar-akar', `${X} = ${num(p.h - r)} dan ${num(p.h + r)}`]);
+          points.push({ x: p.h - r, y: 0, label: 'akar' }, { x: p.h + r, y: 0, label: 'akar' });
+        } else if (q === 0) info.push(['Akar', `${X} = ${num(p.h)} (kembar)`]);
+        else info.push(['Akar', 'tidak ada akar real']);
+        const yi = p.a * p.h * p.h + p.k;
+        info.push(['Potong sumbu y', pt(0, yi)]);
+        points.push({ x: 0, y: yi, label: 'potong y' });
+      }
+      return { info, points, guides };
+    },
+    questions: [
+      'Ubah h. Mengapa grafik bergeser ke kanan saat h positif, padahal tandanya minus di rumus?',
+      'Bandingkan dengan bentuk umum: nyatakan a(x − h)² + k ke dalam ax² + bx + c.',
+      'Buat parabola dengan puncak (2; −3) yang melalui titik asal (0; 0).',
+    ],
+  },
+  {
+    id: 'sin', name: 'Sinus: y = A sin(Bx + C) + D',
+    params: [
+      { k: 'A', min: -5, max: 5, step: 0.1, val: 2, desc: 'amplitudo' },
+      { k: 'B', min: 0.1, max: 5, step: 0.1, val: 1, desc: 'frekuensi sudut, periode = 2π/B' },
+      { k: 'C', min: -6.3, max: 6.3, step: 0.1, val: 0, desc: 'fase (radian)' },
+      { k: 'D', min: -5, max: 5, step: 0.1, val: 0, desc: 'geser atas/bawah (garis setimbang)' },
+    ],
+    f: (x, p) => p.A * Math.sin(p.B * x + p.C) + p.D,
+    formula: p => `${Y} = ${num(p.A)} sin(${num(p.B)}${X}${signed(p.C)})${signed(p.D)}`,
+    analyze(p) {
+      const T = 2 * Math.PI / p.B;
+      const info = [
+        ['Amplitudo', num(Math.abs(p.A))],
+        ['Periode', num(T) + ` (= 2π/${num(p.B)})`],
+        ['Pergeseran fase', `${num(-p.C / p.B)} satuan ke ${-p.C / p.B >= 0 ? 'kanan' : 'kiri'}`],
+        ['Nilai maks/min', `${num(p.D + Math.abs(p.A))} / ${num(p.D - Math.abs(p.A))}`],
+      ];
+      const points = [];
+      const x0 = (Math.PI / 2 - p.C) / p.B;                       // puncak pertama (jika A > 0)
+      for (let n = -6; n <= 6; n++) {
+        const xp = x0 + n * T;
+        points.push({ x: xp, y: p.A + p.D, label: '' });
+      }
+      return { info, points, guides: [{ type: 'h', v: p.D }] };
+    },
+    questions: [
+      'Gunakan tombol ▶ pada C. Ke arah mana gelombang bergerak? Hubungkan dengan gelombang berjalan.',
+      'Jika B dijadikan dua kali lipat, apa yang terjadi pada periode?',
+      'Atur parameter agar grafik sama dengan y = cos x. Apa nilai C yang diperlukan?',
+    ],
+  },
+  {
+    id: 'exp', name: 'Eksponen: y = a · bˣ + k',
+    params: [
+      { k: 'a', min: -5, max: 5, step: 0.1, val: 1, desc: 'faktor pengali' },
+      { k: 'b', min: 0.1, max: 4, step: 0.05, val: 2, desc: 'basis (b > 1 tumbuh, 0 < b < 1 meluruh)' },
+      { k: 'k', min: -5, max: 5, step: 0.1, val: 0, desc: 'geser atas/bawah (asimtot)' },
+    ],
+    f: (x, p) => p.a * Math.pow(p.b, x) + p.k,
+    formula: p => `${Y} = ${num(p.a)} · ${num(p.b)}<sup>${X}</sup>${signed(p.k)}`,
+    analyze(p) {
+      const info = [
+        ['Asimtot datar', `${Y} = ${num(p.k)}`],
+        ['Potong sumbu y', pt(0, p.a + p.k)],
+        ['Perilaku', p.b > 1 ? 'pertumbuhan' : (p.b < 1 ? 'peluruhan' : 'konstan (b = 1)')],
+      ];
+      const points = [{ x: 0, y: p.a + p.k, label: 'potong y' }];
+      if (p.b !== 1 && p.a !== 0 && -p.k / p.a > 0) {
+        const r = Math.log(-p.k / p.a) / Math.log(p.b);
+        info.push(['Potong sumbu x', pt(r, 0)]);
+        points.push({ x: r, y: 0, label: 'akar' });
+      }
+      if (p.b !== 1) info.push([p.b > 1 ? 'Waktu ganda' : 'Waktu paruh', num(Math.abs(Math.log(2) / Math.log(p.b)))]);
+      return { info, points, guides: [{ type: 'h', v: p.k }] };
+    },
+    questions: [
+      'Bandingkan b = 2 dan b = 0,5. Apa hubungan kedua grafik itu?',
+      'Mengapa grafik tidak pernah memotong garis asimtot y = k?',
+      'Contoh di dunia nyata: peluruhan radioaktif, pertumbuhan bakteri, pendinginan kopi. Parameter mana yang mewakili apa?',
+    ],
+  },
+  {
+    id: 'log', name: 'Logaritma: y = a · ln(x − h) + k',
+    params: [
+      { k: 'a', min: -5, max: 5, step: 0.1, val: 1, desc: 'faktor pengali' },
+      { k: 'h', min: -6, max: 6, step: 0.1, val: 0, desc: 'geser kanan/kiri (asimtot tegak)' },
+      { k: 'k', min: -5, max: 5, step: 0.1, val: 0, desc: 'geser atas/bawah' },
+    ],
+    f: (x, p) => x > p.h ? p.a * Math.log(x - p.h) + p.k : NaN,
+    formula: p => `${Y} = ${num(p.a)} · ln(${X}${signed(-p.h)})${signed(p.k)}`,
+    analyze(p) {
+      const info = [['Daerah asal', `${X} > ${num(p.h)}`], ['Asimtot tegak', `${X} = ${num(p.h)}`]];
+      const points = [];
+      if (p.a !== 0) { const r = p.h + Math.exp(-p.k / p.a); info.push(['Potong sumbu x', pt(r, 0)]); points.push({ x: r, y: 0, label: 'akar' }); }
+      if (p.h < 0) { const yi = p.a * Math.log(-p.h) + p.k; info.push(['Potong sumbu y', pt(0, yi)]); points.push({ x: 0, y: yi, label: 'potong y' }); }
+      return { info, points, guides: [{ type: 'v', v: p.h }] };
+    },
+    questions: [
+      'Mengapa grafik tidak ada di sebelah kiri garis x = h?',
+      'Bandingkan dengan fungsi eksponen. Mengapa ln disebut invers dari eˣ?',
+      'Skala desibel dan pH memakai logaritma. Apa artinya jika nilai x dikali 10?',
+    ],
+  },
+  {
+    id: 'custom', name: 'Fungsi bebas (tulis sendiri)',
+    params: [
+      { k: 'a', min: -5, max: 5, step: 0.1, val: 0.2, desc: '' },
+      { k: 'b', min: -5, max: 5, step: 0.1, val: 0, desc: '' },
+      { k: 'c', min: -5, max: 5, step: 0.1, val: -2, desc: '' },
+      { k: 'd', min: -5, max: 5, step: 0.1, val: 0, desc: '' },
+    ],
+    f: (x, p) => customFn ? customFn(x, p.a, p.b, p.c, p.d) : NaN,
+    formula: p => `${Y} = ${escapeHtml($('expr').value)}`,
+    analyze: () => ({ info: [['Tips', 'Tersedia: sin, cos, tan, sqrt, abs, exp, ln, log10, pi, ^']], points: [], guides: [] }),
+    questions: [
+      'Tulis a*x^3 + b*x^2 + c*x + d. Berapa banyak akar yang bisa dimiliki fungsi pangkat tiga?',
+      'Coba a*sin(b*x)*exp(-c*x^2): bentuk seperti ini dipakai untuk menggambarkan apa?',
+      'Rancang sendiri fungsi untuk mapel Anda, misalnya hukum pendinginan atau kurva pertumbuhan populasi.',
+    ],
+  },
+];
+
+/* ================= Keadaan aplikasi ================= */
+const $ = id => document.getElementById(id);
+const canvas = $('plot'), ctx = canvas.getContext('2d');
+let fam = FAMILIES[0], P = {}, ghost = null, customFn = null;
+let view = { cx: 0, cy: 0, s: 30 }, cssW = 600, cssH = 400, dpr = 1;
+let tracerX = null, anim = null, dirty = true;
+
+function escapeHtml(s) { return s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]); }
+
+/* ================= Fungsi bebas ================= */
+function compileCustom() {
+  const raw = $('expr').value.trim();
+  $('exprErr').textContent = '';
+  customFn = null;
+  if (!raw) { $('exprErr').textContent = 'Tulis fungsi terlebih dahulu.'; return; }
+  if (/[;={}\[\]`'"\\]|=>|\b(window|document|fetch|eval|Function|constructor|import|this|new)\b/.test(raw)) {
+    $('exprErr').textContent = 'Ekspresi berisi karakter atau kata yang tidak diizinkan.'; return;
+  }
+  const js = raw.replace(/\^/g, '**').replace(/\bln\b/g, 'log').replace(/\blog10\b/g, 'log10').replace(/\bpi\b/gi, 'PI');
+  try {
+    const fn = new Function('x', 'a', 'b', 'c', 'd', 'with (Math) { return (' + js + '); }');
+    const test = fn(1.234, 1, 1, 1, 1);
+    if (typeof test !== 'number') throw new Error('hasil bukan angka');
+    customFn = fn;
+  } catch (e) {
+    $('exprErr').textContent = 'Ekspresi belum benar: periksa tanda kurung dan gunakan * untuk perkalian.';
+  }
+}
+
+/* ================= Panel parameter ================= */
+function buildFamilySelect() {
+  const sel = $('family');
+  FAMILIES.forEach(f => { const o = document.createElement('option'); o.value = f.id; o.textContent = f.name; sel.appendChild(o); });
+  sel.onchange = () => setFamily(sel.value);
+}
+
+function setFamily(id) {
+  fam = FAMILIES.find(f => f.id === id);
+  P = {}; fam.params.forEach(q => P[q.k] = q.val);
+  ghost = null; anim = null;
+  $('customBox').style.display = fam.id === 'custom' ? 'block' : 'none';
+  if (fam.id === 'custom') { if (!$('expr').value) $('expr').value = 'a*x^3 + b*x^2 + c*x + d'; compileCustom(); }
+  const box = $('params'); box.innerHTML = '';
+  fam.params.forEach(q => {
+    const row = document.createElement('div'); row.className = 'param';
+    row.innerHTML = `
+      <span class="name">${q.k}</span>
+      <input type="range" min="${q.min}" max="${q.max}" step="${q.step}" value="${q.val}" aria-label="parameter ${q.k}">
+      <span style="display:flex;gap:6px;align-items:center"><span class="val"></span><button class="play" title="Animasikan ${q.k}" aria-label="Animasikan ${q.k}">▶</button></span>
+      ${q.desc ? `<span class="desc">${q.desc}</span>` : ''}`;
+    const slider = row.querySelector('input'), valEl = row.querySelector('.val'), play = row.querySelector('.play');
+    q.el = { slider, valEl, play };
+    valEl.textContent = num(q.val);
+    slider.oninput = () => { stopAnim(); P[q.k] = +slider.value; valEl.textContent = num(P[q.k]); update(); };
+    play.onclick = () => {
+      if (anim && anim.q === q) { stopAnim(); return; }
+      stopAnim();
+      anim = { q, t0: performance.now(), base: P[q.k] };
+      play.classList.add('on'); play.textContent = '❚❚';
+    };
+    box.appendChild(row);
+  });
+  $('questions').innerHTML = fam.questions.map(t => `<li>${t}</li>`).join('');
+  update();
+}
+
+function stopAnim() {
+  if (!anim) return;
+  anim.q.el.play.classList.remove('on'); anim.q.el.play.textContent = '▶';
+  anim = null;
+}
+
+function update() {
+  $('formula').innerHTML = fam.formula(P);
+  const a = fam.analyze(P);
+  $('info').innerHTML = a.info.map(([k, v]) => `<div><b>${k}</b>${v}</div>`).join('');
+  dirty = true;
+}
+
+/* ================= Koordinat dan grid ================= */
+const toPx = x => cssW / 2 + (x - view.cx) * view.s;
+const toPy = y => cssH / 2 - (y - view.cy) * view.s;
+const fromPx = px => view.cx + (px - cssW / 2) / view.s;
+const fromPy = py => view.cy - (py - cssH / 2) / view.s;
+
+function niceStep(minPx) {
+  const raw = minPx / view.s, p = Math.pow(10, Math.floor(Math.log10(raw)));
+  for (const m of [1, 2, 5, 10]) if (m * p >= raw) return m * p;
+  return 10 * p;
+}
+
+function resize() {
+  dpr = window.devicePixelRatio || 1;
+  const oldW = cssW;
+  cssW = canvas.clientWidth;
+  cssH = Math.max(300, Math.min(600, Math.round(cssW * 0.66)));
+  canvas.style.height = cssH + 'px';
+  canvas.width = Math.round(cssW * dpr); canvas.height = Math.round(cssH * dpr);
+  if (!resize.done) { view.s = cssW / 20; resize.done = true; }
+  else if (oldW) view.s *= cssW / oldW;
+  dirty = true;
+}
+
+/* ================= Menggambar ================= */
+function colors() {
+  const cs = getComputedStyle(document.documentElement), g = n => cs.getPropertyValue(n).trim();
+  return { grid: g('--grid'), axis: g('--axis'), curve: g('--curve'), ghost: g('--ghost'), point: g('--point'), guide: g('--guide'), ink: g('--ink'), muted: g('--muted'), card: g('--card') };
+}
+
+function plotCurve(f, params, color, width, dash) {
+  ctx.strokeStyle = color; ctx.lineWidth = width; ctx.setLineDash(dash || []);
+  ctx.beginPath();
+  let pen = false, lastY = null;
+  const limit = cssH * 4;
+  for (let px = 0; px <= cssW; px += 0.5) {
+    const y = f(fromPx(px), params);
+    if (!isFinite(y)) { pen = false; lastY = null; continue; }
+    let py = toPy(y);
+    const clamped = Math.max(-limit, Math.min(cssH + limit, py));
+    if (pen && lastY !== null && Math.abs(clamped - lastY) > cssH * 1.5 &&
+        (lastY < 0 || lastY > cssH) && (clamped < 0 || clamped > cssH)) pen = false;   // lompatan (misal asimtot)
+    if (!pen) { ctx.moveTo(px, clamped); pen = true; } else ctx.lineTo(px, clamped);
+    lastY = clamped;
+  }
+  ctx.stroke(); ctx.setLineDash([]);
+}
+
+function draw() {
+  const c = colors();
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.fillStyle = c.card; ctx.fillRect(0, 0, cssW, cssH);
+
+  // grid
+  const major = niceStep(60), minor = major / 5;
+  const x0 = fromPx(0), x1 = fromPx(cssW), y0 = fromPy(cssH), y1 = fromPy(0);
+  ctx.lineWidth = 1;
+  for (const [step, alpha] of [[minor, 0.5], [major, 1]]) {
+    ctx.strokeStyle = c.grid; ctx.globalAlpha = alpha; ctx.beginPath();
+    for (let x = Math.ceil(x0 / step) * step; x <= x1; x += step) { const px = Math.round(toPx(x)) + 0.5; ctx.moveTo(px, 0); ctx.lineTo(px, cssH); }
+    for (let y = Math.ceil(y0 / step) * step; y <= y1; y += step) { const py = Math.round(toPy(y)) + 0.5; ctx.moveTo(0, py); ctx.lineTo(cssW, py); }
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+
+  // sumbu
+  const ax = Math.round(toPx(0)) + 0.5, ay = Math.round(toPy(0)) + 0.5;
+  ctx.strokeStyle = c.axis; ctx.lineWidth = 1.5; ctx.beginPath();
+  if (ay > 0 && ay < cssH) { ctx.moveTo(0, ay); ctx.lineTo(cssW, ay); }
+  if (ax > 0 && ax < cssW) { ctx.moveTo(ax, 0); ctx.lineTo(ax, cssH); }
+  ctx.stroke();
+
+  // label sumbu
+  ctx.fillStyle = c.muted; ctx.font = '12px system-ui, sans-serif';
+  const dec = Math.max(0, -Math.floor(Math.log10(major) + 1e-9));
+  const labY = Math.min(Math.max(ay + 4, 4), cssH - 16), labX = Math.min(Math.max(ax - 6, 30), cssW - 4);
+  ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  for (let x = Math.ceil(x0 / major) * major; x <= x1; x += major) {
+    if (Math.abs(x) < major / 2 || toPx(x) < 14 || toPx(x) > cssW - 14) continue;
+    ctx.fillText(num(x, dec), toPx(x), labY);
+  }
+  ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+  for (let y = Math.ceil(y0 / major) * major; y <= y1; y += major) {
+    if (Math.abs(y) < major / 2 || toPy(y) < 10 || toPy(y) > cssH - 10) continue;
+    ctx.fillText(num(y, dec), labX, toPy(y));
+  }
+  ctx.textAlign = 'right'; ctx.textBaseline = 'top'; ctx.fillText('0', ax - 4, ay + 4);
+  ctx.font = 'italic 14px Cambria, serif';
+  ctx.textAlign = 'right'; ctx.textBaseline = 'bottom'; ctx.fillText('x', cssW - 6, labY - 2);
+  ctx.textAlign = 'left'; ctx.textBaseline = 'top'; ctx.fillText('y', Math.min(Math.max(ax + 6, 6), cssW - 14), 6);
+
+  const a = fam.analyze(P);
+
+  // garis bantu
+  if ($('showGuides').checked) {
+    ctx.strokeStyle = c.guide; ctx.lineWidth = 1.2; ctx.setLineDash([6, 5]); ctx.beginPath();
+    for (const g of a.guides) {
+      if (g.type === 'v') { const px = toPx(g.v); ctx.moveTo(px, 0); ctx.lineTo(px, cssH); }
+      else { const py = toPy(g.v); ctx.moveTo(0, py); ctx.lineTo(cssW, py); }
+    }
+    ctx.stroke(); ctx.setLineDash([]);
+  }
+
+  // pembanding dan kurva
+  if (ghost) plotCurve(ghost.f, ghost.p, c.ghost, 2.5, [8, 6]);
+  plotCurve(fam.f, P, c.curve, 3);
+
+  // titik penting
+  if ($('showPoints').checked) {
+    ctx.font = '12px system-ui, sans-serif';
+    for (const q of a.points) {
+      if (!isFinite(q.x) || !isFinite(q.y)) continue;
+      const px = toPx(q.x), py = toPy(q.y);
+      if (px < -10 || px > cssW + 10 || py < -10 || py > cssH + 10) continue;
+      ctx.fillStyle = c.point; ctx.beginPath(); ctx.arc(px, py, 5, 0, Math.PI * 2); ctx.fill();
+      if (q.label) {
+        const t = pt(q.x, q.y);
+        ctx.textAlign = px > cssW - 120 ? 'right' : 'left'; ctx.textBaseline = 'bottom';
+        const tx = px + (ctx.textAlign === 'left' ? 8 : -8), ty = py - 6;
+        const w = ctx.measureText(t).width;
+        ctx.fillStyle = c.card; ctx.globalAlpha = 0.85;
+        ctx.fillRect(ctx.textAlign === 'left' ? tx - 2 : tx - w - 2, ty - 15, w + 4, 16);
+        ctx.globalAlpha = 1; ctx.fillStyle = c.ink; ctx.fillText(t, tx, ty);
+      }
+    }
+  }
+
+  // pelacak kursor
+  if (tracerX !== null) {
+    const xv = fromPx(tracerX), yv = fam.f(xv, P);
+    if (isFinite(yv)) {
+      const py = toPy(yv);
+      ctx.strokeStyle = c.guide; ctx.lineWidth = 1; ctx.setLineDash([3, 4]);
+      ctx.beginPath(); ctx.moveTo(tracerX, Math.min(Math.max(toPy(0), 0), cssH)); ctx.lineTo(tracerX, py); ctx.stroke(); ctx.setLineDash([]);
+      ctx.fillStyle = c.curve; ctx.beginPath(); ctx.arc(tracerX, py, 5, 0, Math.PI * 2); ctx.fill();
+      $('cursorOut').textContent = `x = ${num(xv)}, y = ${num(yv)}`;
+    } else $('cursorOut').textContent = `x = ${num(xv)}, y tak terdefinisi`;
+  }
+  $('scaleOut').textContent = `1 kotak besar = ${num(major, dec)}`;
+}
+
+/* ================= Loop animasi ================= */
+function frame(now) {
+  if (anim) {
+    const q = anim.q, mid = (q.min + q.max) / 2, amp = (q.max - q.min) / 2;
+    const phase = Math.asin(Math.max(-1, Math.min(1, (anim.base - mid) / amp)));
+    let v = mid + amp * Math.sin(phase + (now - anim.t0) / 1000 * (2 * Math.PI / 6));
+    v = Math.round(v / q.step) * q.step;
+    if (v !== P[q.k]) { P[q.k] = +v.toFixed(4); q.el.slider.value = P[q.k]; q.el.valEl.textContent = num(P[q.k]); update(); }
+  }
+  if (dirty) { draw(); dirty = false; }
+  requestAnimationFrame(frame);
+}
+
+/* ================= Interaksi: geser, zoom, cubit ================= */
+const pointers = new Map();
+let pinch0 = null;
+function zoomAt(px, py, factor) {
+  const wx = fromPx(px), wy = fromPy(py);
+  view.s = Math.max(2, Math.min(5000, view.s * factor));
+  view.cx = wx - (px - cssW / 2) / view.s;
+  view.cy = wy + (py - cssH / 2) / view.s;
+  dirty = true;
+}
+function localPos(e) { const r = canvas.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; }
+
+canvas.addEventListener('pointerdown', e => {
+  canvas.setPointerCapture(e.pointerId);
+  pointers.set(e.pointerId, localPos(e));
+  canvas.classList.add('drag');
+  if (pointers.size === 2) {
+    const [p1, p2] = [...pointers.values()];
+    pinch0 = { d: Math.hypot(p1.x - p2.x, p1.y - p2.y), s: view.s };
+  }
+  tracerX = localPos(e).x; dirty = true;
+});
+canvas.addEventListener('pointermove', e => {
+  const pos = localPos(e);
+  if (pointers.has(e.pointerId)) {
+    const prev = pointers.get(e.pointerId);
+    pointers.set(e.pointerId, pos);
+    if (pointers.size === 1) {
+      view.cx -= (pos.x - prev.x) / view.s;
+      view.cy += (pos.y - prev.y) / view.s;
+    } else if (pointers.size === 2 && pinch0) {
+      const [p1, p2] = [...pointers.values()];
+      const d = Math.hypot(p1.x - p2.x, p1.y - p2.y);
+      zoomAt((p1.x + p2.x) / 2, (p1.y + p2.y) / 2, (pinch0.s * d / pinch0.d) / view.s);
+    }
+  }
+  tracerX = pos.x; dirty = true;
+});
+function endPointer(e) {
+  pointers.delete(e.pointerId);
+  if (pointers.size < 2) pinch0 = null;
+  if (!pointers.size) canvas.classList.remove('drag');
+}
+canvas.addEventListener('pointerup', endPointer);
+canvas.addEventListener('pointercancel', endPointer);
+canvas.addEventListener('pointerleave', e => { if (e.pointerType === 'mouse') { tracerX = null; $('cursorOut').textContent = '–'; dirty = true; } });
+canvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  const p = localPos(e);
+  zoomAt(p.x, p.y, Math.exp(-e.deltaY * 0.0015));
+}, { passive: false });
+
+$('zoomIn').onclick = () => zoomAt(cssW / 2, cssH / 2, 1.5);
+$('zoomOut').onclick = () => zoomAt(cssW / 2, cssH / 2, 1 / 1.5);
+$('zoomReset').onclick = () => { view = { cx: 0, cy: 0, s: cssW / 20 }; dirty = true; };
+
+/* ================= Tombol lain ================= */
+$('btnGhost').onclick = () => {
+  const snap = { ...P };
+  if (fam.id === 'custom') {
+    const fn = customFn;
+    ghost = { f: (x, p) => fn ? fn(x, p.a, p.b, p.c, p.d) : NaN, p: snap };
+  } else ghost = { f: fam.f, p: snap };
+  dirty = true;
+};
+$('btnClearGhost').onclick = () => { ghost = null; dirty = true; };
+$('btnReset').onclick = () => {
+  stopAnim();
+  fam.params.forEach(q => { P[q.k] = q.val; q.el.slider.value = q.val; q.el.valEl.textContent = num(q.val); });
+  update();
+};
+$('showPoints').onchange = $('showGuides').onchange = () => dirty = true;
+$('expr').addEventListener('input', () => { compileCustom(); update(); });
+
+window.addEventListener('resize', resize);
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', () => dirty = true);
+
+/* ================= Mulai ================= */
+buildFamilySelect();
+resize();
+setFamily('linear');
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
