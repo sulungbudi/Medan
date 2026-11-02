@@ -73,7 +73,7 @@
     <div id="customBox" style="display:none;margin-top:12px">
       <label for="expr">Tulis fungsi dalam <i>x</i> (boleh memakai a, b, c, d)</label>
       <input id="expr" type="text" spellcheck="false" autocomplete="off">
-      <div class="hint">Contoh: <code>a*x^3 + b*x^2 + c*x + d</code>, <code>a*sin(b*x)*exp(-c*x^2)</code>. Gunakan tanda * untuk perkalian.</div>
+      <div class="hint">Contoh: <code>a*x^3 + b*x^2 + c*x + d</code>, <code>y = ReLU(x)</code>, <code>ReLU(a*x + b) - ReLU(c*x + d)</code>. Gunakan tanda * untuk perkalian; <code>ReLU(z)</code> berarti max(0, z).</div>
       <div class="err" id="exprErr"></div>
     </div>
 
@@ -349,8 +349,8 @@ const FAMILIES = [
       { k: 'd', min: -5, max: 5, step: 0.1, val: 0, desc: '' },
     ],
     f: (x, p) => customFn ? customFn(x, p.a, p.b, p.c, p.d) : NaN,
-    formula: p => `${Y} = ${escapeHtml($('expr').value)}`,
-    analyze: () => ({ info: [['Tips', 'Tersedia: sin, cos, tan, sqrt, abs, exp, ln, log10, pi, ^']], points: [], guides: [] }),
+    formula: p => `${Y} = ${escapeHtml(exprBody())}`,
+    analyze: () => ({ info: [['Tips', 'Tersedia: sin, cos, tan, sqrt, abs, exp, ln, log10, max, min, ReLU, pi, ^']], points: [], guides: [] }),
     questions: [
       'Tulis a*x^3 + b*x^2 + c*x + d. Berapa banyak akar yang bisa dimiliki fungsi pangkat tiga?',
       'Coba a*sin(b*x)*exp(-c*x^2): bentuk seperti ini dipakai untuk menggambarkan apa?',
@@ -369,17 +369,22 @@ let tracerX = null, anim = null, dirty = true;
 function escapeHtml(s) { return s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]); }
 
 /* ================= Fungsi bebas ================= */
+const RELU = z => Math.max(0, z);                       // ReLU(z) = max(0, z)
+// Buang awalan "y =" atau "f(x) =" agar pengguna boleh menulis "y = ReLU(x)"
+const exprBody = () => $('expr').value.trim().replace(/^\s*(y|f\s*\(\s*x\s*\))\s*=\s*/i, '');
+
 function compileCustom() {
-  const raw = $('expr').value.trim();
+  const raw = exprBody();
   $('exprErr').textContent = '';
   customFn = null;
   if (!raw) { $('exprErr').textContent = 'Tulis fungsi terlebih dahulu.'; return; }
   if (/[;={}\[\]`'"\\]|=>|\b(window|document|fetch|eval|Function|constructor|import|this|new)\b/.test(raw)) {
     $('exprErr').textContent = 'Ekspresi berisi karakter atau kata yang tidak diizinkan.'; return;
   }
-  const js = raw.replace(/\^/g, '**').replace(/\bln\b/g, 'log').replace(/\blog10\b/g, 'log10').replace(/\bpi\b/gi, 'PI');
+  const js = raw.replace(/\brelu\b/gi, 'ReLU').replace(/\^/g, '**').replace(/\bln\b/g, 'log').replace(/\blog10\b/g, 'log10').replace(/\bpi\b/gi, 'PI');
   try {
-    const fn = new Function('x', 'a', 'b', 'c', 'd', 'with (Math) { return (' + js + '); }');
+    const inner = new Function('x', 'a', 'b', 'c', 'd', 'ReLU', 'with (Math) { return (' + js + '); }');
+    const fn = (x, a, b, c, d) => inner(x, a, b, c, d, RELU);
     const test = fn(1.234, 1, 1, 1, 1);
     if (typeof test !== 'number') throw new Error('hasil bukan angka');
     customFn = fn;
