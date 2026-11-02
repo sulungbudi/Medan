@@ -1,0 +1,483 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pelacak Warna – Lab STEM</title>
+<style>
+  :root{
+    --bg:#f6f7fb; --card:#ffffff; --ink:#1d2433; --muted:#5b6475;
+    --accent:#2563eb; --accent2:#ea580c; --line:#dfe3ec;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{ --bg:#11141b; --card:#1a1f2a; --ink:#e8ebf2; --muted:#9aa3b5;
+           --accent:#60a5fa; --accent2:#fb923c; --line:#2c3342; }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+       background:var(--bg);color:var(--ink);line-height:1.45}
+  header{max-width:1000px;margin:auto;padding:18px 16px 8px}
+  h1{font-size:1.45rem;margin:0 0 4px}
+  h2{font-size:1.05rem;margin:0 0 10px}
+  header p{margin:0;color:var(--muted)}
+  main{max-width:1000px;margin:auto;padding:8px 16px 40px;display:grid;gap:16px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px}
+  .controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+  button{font:inherit;padding:8px 12px;border-radius:8px;border:1px solid var(--line);
+         background:var(--card);color:var(--ink);cursor:pointer}
+  button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  button.rec{background:#dc2626;border-color:#dc2626;color:#fff}
+  button:disabled{opacity:.45;cursor:not-allowed}
+  .sliders{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px 18px;margin-top:12px}
+  label{font-size:.9rem;color:var(--muted)}
+  input[type=range]{width:100%}
+  .checks{display:flex;flex-wrap:wrap;gap:6px 18px;margin-top:8px}
+  .stage{position:relative;background:#000;border-radius:10px;overflow:hidden;min-height:180px}
+  #view{display:block;width:100%;height:auto;touch-action:none;cursor:crosshair}
+  #placeholder{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+               color:#cbd2e0;text-align:center;padding:20px}
+  .readout{display:flex;flex-wrap:wrap;gap:6px 20px;margin-top:10px;font-variant-numeric:tabular-nums}
+  .swatch{display:inline-block;width:22px;height:22px;border-radius:6px;border:2px solid var(--line);
+          vertical-align:middle;background:repeating-linear-gradient(45deg,#ccc 0 4px,#fff 4px 8px)}
+  .status{margin-top:8px;font-size:.92rem;color:var(--muted)}
+  #fit{font-weight:600;color:var(--accent)}
+  #chart{display:block;width:100%;height:260px}
+  ol{margin:0;padding-left:20px} li{margin-bottom:4px}
+</style>
+</head>
+<body>
+<header>
+  <h1>Pelacak Warna dengan Webcam</h1>
+  <p>Lacak benda berwarna, rekam posisinya terhadap waktu, lalu analisis geraknya.</p>
+</header>
+
+<main>
+  <section class="card">
+    <div class="controls">
+      <button id="btnStart" class="primary">Mulai Kamera</button>
+      <button id="btnSwitch" disabled>Ganti Kamera</button>
+      <button id="btnCalib" disabled>Kalibrasi Skala</button>
+      <button id="btnRec" disabled>● Rekam</button>
+      <button id="btnReset" disabled>Reset</button>
+      <button id="btnCSV" disabled>Unduh CSV</button>
+      <span>Target: <span id="swatch" class="swatch"></span></span>
+    </div>
+    <div class="sliders">
+      <div>
+        <label for="tol">Toleransi warna: <b id="tolVal">18</b></label>
+        <input id="tol" type="range" min="5" max="60" value="18">
+      </div>
+      <div>
+        <label for="minPix">Piksel minimum terdeteksi: <b id="minPixVal">30</b></label>
+        <input id="minPix" type="range" min="5" max="500" value="30">
+      </div>
+    </div>
+    <div class="checks">
+      <label><input id="mirror" type="checkbox" checked> Cerminkan gambar</label>
+      <label><input id="showMask" type="checkbox"> Tampilkan area terdeteksi</label>
+      <label><input id="showTrail" type="checkbox" checked> Tampilkan jejak</label>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="stage">
+      <canvas id="view" width="640" height="480"></canvas>
+      <div id="placeholder">Tekan <b>&nbsp;Mulai Kamera&nbsp;</b>, lalu klik benda berwarna pada gambar.</div>
+    </div>
+    <div class="readout">
+      <span>Posisi: <b id="posOut">–</b></span>
+      <span>Piksel cocok: <b id="nOut">0</b></span>
+      <span>FPS: <b id="fpsOut">0</b></span>
+      <span>Data: <b id="dataOut">0</b> titik</span>
+      <span>Skala: <b id="scaleOut">belum dikalibrasi</b></span>
+    </div>
+    <div class="status" id="status">Siap.</div>
+  </section>
+
+  <section class="card">
+    <h2>Grafik posisi terhadap waktu</h2>
+    <canvas id="chart"></canvas>
+    <div class="status" id="fit"></div>
+  </section>
+
+  <section class="card">
+    <h2>Cara pakai</h2>
+    <ol>
+      <li>Tekan <b>Mulai Kamera</b> dan izinkan akses kamera.</li>
+      <li><b>Klik/ketuk benda</b> berwarna mencolok (bola merah, tutup spidol, dll.) untuk memilih warna target.</li>
+      <li>Atur <b>toleransi</b> sampai hanya benda itu yang terdeteksi (nyalakan “Tampilkan area terdeteksi” untuk mengecek).</li>
+      <li>Opsional: tekan <b>Kalibrasi Skala</b>, klik dua ujung benda yang panjangnya diketahui (misal penggaris 30 cm), lalu masukkan panjangnya. Satuan berubah menjadi meter.</li>
+      <li>Tekan <b>Rekam</b>, gerakkan atau jatuhkan benda, lalu tekan <b>Stop</b>. Percepatan vertikal dihitung dengan fit kuadratik.</li>
+      <li><b>Unduh CSV</b> untuk dianalisis di Excel, Google Sheets, atau Python.</li>
+    </ol>
+    <p class="status">Catatan: video diproses langsung di browser dan tidak dikirim ke mana pun. Kamera hanya berfungsi lewat HTTPS (misalnya GitHub Pages).</p>
+  </section>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const view = $('view'), vctx = view.getContext('2d');
+const work = document.createElement('canvas');
+const wctx = work.getContext('2d', { willReadFrequently: true });
+const maskC = document.createElement('canvas'), mctx = maskC.getContext('2d');
+const video = document.createElement('video');
+video.muted = true; video.playsInline = true; video.setAttribute('playsinline', '');
+
+let stream = null, facing = 'environment', rafId = null;
+let W = 320, H = 240, maskData = null, lastFrame = null;
+let target = null;                 // {r,g,b,h,s,v}
+let mode = 'pick', calibPts = [], pxPerM = null;
+let recording = false, t0 = 0, data = [];
+let trail = [], pos = null;
+let frames = 0, lastFpsT = performance.now(), lastChart = 0;
+
+const setStatus = msg => { $('status').textContent = msg; };
+
+function rgb2hsv(r, g, b) {
+  r /= 255; g /= 255; b /= 255;
+  const mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn;
+  let h = 0;
+  if (d) {
+    if (mx === r) h = ((g - b) / d) % 6;
+    else if (mx === g) h = (b - r) / d + 2;
+    else h = (r - g) / d + 4;
+    h *= 60; if (h < 0) h += 360;
+  }
+  return [h, mx ? d / mx : 0, mx];
+}
+
+/* ---------- Kamera ---------- */
+function stopCamera() {
+  if (rafId) cancelAnimationFrame(rafId);
+  rafId = null;
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  stream = null;
+}
+
+async function startCamera() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    setStatus('Browser ini tidak mendukung akses kamera. Coba Chrome, Edge, atau Firefox terbaru.');
+    return;
+  }
+  if (!window.isSecureContext) {
+    setStatus('Kamera hanya bisa diakses lewat HTTPS (misalnya GitHub Pages) atau localhost.');
+    return;
+  }
+  stopCamera();
+  setStatus('Meminta izin kamera…');
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: facing }, width: { ideal: 640 }, height: { ideal: 480 } },
+      audio: false
+    });
+  } catch (err) {
+    const msg = {
+      NotAllowedError: 'Izin kamera ditolak. Izinkan kamera lewat ikon gembok di address bar, lalu coba lagi.',
+      NotFoundError: 'Kamera tidak ditemukan pada perangkat ini.',
+      NotReadableError: 'Kamera sedang dipakai aplikasi lain (Zoom, Meet, dll.). Tutup aplikasi itu dulu.'
+    }[err.name] || ('Gagal membuka kamera: ' + err.message);
+    setStatus(msg);
+    return;
+  }
+  video.srcObject = stream;
+  await video.play();
+  const settings = stream.getVideoTracks()[0].getSettings();
+  // Kamera depan/laptop dicerminkan agar gerakan terasa alami; kamera belakang tidak.
+  $('mirror').checked = settings.facingMode !== 'environment';
+
+  view.width = video.videoWidth; view.height = video.videoHeight;
+  W = 320; H = Math.round(W * video.videoHeight / video.videoWidth);
+  work.width = maskC.width = W; work.height = maskC.height = H;
+  maskData = mctx.createImageData(W, H);
+
+  $('placeholder').style.display = 'none';
+  ['btnSwitch', 'btnCalib', 'btnRec', 'btnReset', 'btnCSV'].forEach(id => $(id).disabled = false);
+  setStatus(target ? 'Kamera aktif.' : 'Kamera aktif. Klik benda berwarna untuk memilih target.');
+  rafId = requestAnimationFrame(loop);
+}
+
+/* ---------- Loop utama ---------- */
+function loop(now) {
+  if (!stream) return;
+  rafId = requestAnimationFrame(loop);
+  if (video.readyState < 2) return;
+
+  const mir = $('mirror').checked;
+  wctx.setTransform(mir ? -1 : 1, 0, 0, 1, mir ? W : 0, 0);
+  wctx.drawImage(video, 0, 0, W, H);
+  wctx.setTransform(1, 0, 0, 1, 0, 0);
+  lastFrame = wctx.getImageData(0, 0, W, H);
+
+  const px = lastFrame.data, md = maskData.data;
+  const showMask = $('showMask').checked;
+  if (showMask) md.fill(0);
+  pos = null;
+  let n = 0;
+
+  if (target) {
+    const tol = +$('tol').value;
+    const lowSat = target.s < 0.25;          // warna pucat/abu: pakai jarak RGB
+    const rgbTol2 = (tol * 2) * (tol * 2);
+    let sx = 0, sy = 0;
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        const i = (y * W + x) * 4, r = px[i], g = px[i + 1], b = px[i + 2];
+        let ok;
+        if (lowSat) {
+          const dr = r - target.r, dg = g - target.g, db = b - target.b;
+          ok = dr * dr + dg * dg + db * db < rgbTol2;
+        } else {
+          const hsv = rgb2hsv(r, g, b);
+          let dh = Math.abs(hsv[0] - target.h); if (dh > 180) dh = 360 - dh;
+          ok = dh <= tol && hsv[1] >= target.s * 0.5 && hsv[2] >= target.v * 0.4;
+        }
+        if (ok) {
+          sx += x; sy += y; n++;
+          if (showMask) { md[i] = 255; md[i + 1] = 0; md[i + 2] = 255; md[i + 3] = 170; }
+        }
+      }
+    }
+    if (n >= +$('minPix').value) {
+      const k = view.width / W;
+      pos = { x: (sx / n + 0.5) * k, y: (sy / n + 0.5) * k };
+    }
+  }
+
+  // Gambar video resolusi penuh
+  vctx.setTransform(mir ? -1 : 1, 0, 0, 1, mir ? view.width : 0, 0);
+  vctx.drawImage(video, 0, 0, view.width, view.height);
+  vctx.setTransform(1, 0, 0, 1, 0, 0);
+
+  if (showMask && target) {
+    mctx.putImageData(maskData, 0, 0);
+    vctx.imageSmoothingEnabled = false;
+    vctx.drawImage(maskC, 0, 0, view.width, view.height);
+    vctx.imageSmoothingEnabled = true;
+  }
+
+  const s = view.width / 640;
+  if (pos) { trail.push(pos); if (trail.length > 90) trail.shift(); }
+  if ($('showTrail').checked && trail.length > 1) {
+    vctx.strokeStyle = 'rgba(255,220,0,0.9)'; vctx.lineWidth = 3 * s;
+    vctx.beginPath(); vctx.moveTo(trail[0].x, trail[0].y);
+    for (const p of trail) vctx.lineTo(p.x, p.y);
+    vctx.stroke();
+  }
+  if (pos) {
+    vctx.strokeStyle = '#00ff88'; vctx.lineWidth = 3 * s;
+    vctx.beginPath(); vctx.arc(pos.x, pos.y, 16 * s, 0, Math.PI * 2); vctx.stroke();
+    vctx.beginPath();
+    vctx.moveTo(pos.x - 26 * s, pos.y); vctx.lineTo(pos.x + 26 * s, pos.y);
+    vctx.moveTo(pos.x, pos.y - 26 * s); vctx.lineTo(pos.x, pos.y + 26 * s);
+    vctx.stroke();
+  }
+  drawCalib(s);
+
+  if (recording) {
+    vctx.fillStyle = '#dc2626';
+    vctx.beginPath(); vctx.arc(22 * s, 22 * s, 9 * s, 0, Math.PI * 2); vctx.fill();
+    if (pos) data.push({ t: (now - t0) / 1000, x: pos.x, y: pos.y });
+  }
+
+  // Tampilan angka
+  const u = unit();
+  if (pos) { const p = toPhys(pos); $('posOut').textContent = `x = ${fmt(p.x)} ${u}, y = ${fmt(p.y)} ${u}`; }
+  else $('posOut').textContent = target ? 'tidak terdeteksi' : '–';
+  $('nOut').textContent = n;
+  $('dataOut').textContent = data.length;
+
+  frames++;
+  if (now - lastFpsT > 1000) {
+    $('fpsOut').textContent = Math.round(frames * 1000 / (now - lastFpsT));
+    frames = 0; lastFpsT = now;
+  }
+  if (recording && now - lastChart > 250) { drawChart(); lastChart = now; }
+}
+
+/* ---------- Kalibrasi & konversi ---------- */
+function drawCalib(s) {
+  if (!calibPts.length) return;
+  vctx.strokeStyle = '#38bdf8'; vctx.fillStyle = '#38bdf8'; vctx.lineWidth = 3 * s;
+  for (const p of calibPts) { vctx.beginPath(); vctx.arc(p.x, p.y, 6 * s, 0, Math.PI * 2); vctx.fill(); }
+  if (calibPts.length === 2) {
+    vctx.beginPath(); vctx.moveTo(calibPts[0].x, calibPts[0].y);
+    vctx.lineTo(calibPts[1].x, calibPts[1].y); vctx.stroke();
+  }
+}
+const unit = () => pxPerM ? 'm' : 'px';
+function toPhys(p) {               // y ke atas, titik nol di pojok kiri bawah
+  const yUp = view.height - p.y;
+  return pxPerM ? { x: p.x / pxPerM, y: yUp / pxPerM } : { x: p.x, y: yUp };
+}
+function fmt(v) {
+  const a = Math.abs(v);
+  return a >= 100 ? v.toFixed(0) : a >= 10 ? v.toFixed(1) : a >= 1 ? v.toFixed(2) : v.toFixed(3);
+}
+
+/* ---------- Interaksi klik ---------- */
+view.addEventListener('pointerdown', e => {
+  if (!stream || !lastFrame) return;
+  const r = view.getBoundingClientRect();
+  const x = (e.clientX - r.left) * view.width / r.width;
+  const y = (e.clientY - r.top) * view.height / r.height;
+
+  if (mode === 'calib') {
+    calibPts.push({ x, y });
+    if (calibPts.length < 2) { setStatus('Klik titik kedua.'); return; }
+    const d = Math.hypot(calibPts[1].x - calibPts[0].x, calibPts[1].y - calibPts[0].y);
+    const cm = parseFloat((prompt('Jarak sebenarnya antara kedua titik (dalam cm):', '30') || '').replace(',', '.'));
+    if (cm > 0 && d > 5) {
+      pxPerM = d / (cm / 100);
+      $('scaleOut').textContent = `${pxPerM.toFixed(0)} piksel/m`;
+      setStatus('Kalibrasi selesai. Satuan sekarang meter.');
+      drawChart();
+    } else {
+      calibPts = [];
+      setStatus('Kalibrasi dibatalkan.');
+    }
+    mode = 'pick'; $('btnCalib').classList.remove('primary');
+    return;
+  }
+
+  // Pilih warna: rata-rata area 5×5 piksel di sekitar titik klik
+  const cx = Math.round(x * W / view.width), cy = Math.round(y * H / view.height);
+  let r0 = 0, g0 = 0, b0 = 0, c = 0;
+  for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
+    const xx = cx + dx, yy = cy + dy;
+    if (xx < 0 || yy < 0 || xx >= W || yy >= H) continue;
+    const i = (yy * W + xx) * 4;
+    r0 += lastFrame.data[i]; g0 += lastFrame.data[i + 1]; b0 += lastFrame.data[i + 2]; c++;
+  }
+  r0 = Math.round(r0 / c); g0 = Math.round(g0 / c); b0 = Math.round(b0 / c);
+  const [h, sat, v] = rgb2hsv(r0, g0, b0);
+  target = { r: r0, g: g0, b: b0, h, s: sat, v };
+  $('swatch').style.background = `rgb(${r0},${g0},${b0})`;
+  trail = [];
+  setStatus(sat < 0.25
+    ? 'Warna target kurang mencolok; deteksi bisa kurang stabil. Gunakan benda berwarna terang jika bisa.'
+    : 'Warna target dipilih. Gerakkan benda dan atur toleransi bila perlu.');
+});
+
+/* ---------- Tombol ---------- */
+$('btnStart').onclick = startCamera;
+$('btnSwitch').onclick = () => { facing = facing === 'user' ? 'environment' : 'user'; startCamera(); };
+$('btnCalib').onclick = () => {
+  mode = 'calib'; calibPts = [];
+  $('btnCalib').classList.add('primary');
+  setStatus('Klik dua ujung benda yang panjangnya diketahui.');
+};
+$('btnRec').onclick = () => {
+  recording = !recording;
+  const b = $('btnRec');
+  if (recording) {
+    data = []; t0 = performance.now(); $('fit').textContent = '';
+    b.textContent = '■ Stop'; b.classList.add('rec');
+    setStatus('Merekam…');
+  } else {
+    b.textContent = '● Rekam'; b.classList.remove('rec');
+    setStatus(`Rekaman selesai: ${data.length} titik data.`);
+    drawChart(); showFit();
+  }
+};
+$('btnReset').onclick = () => {
+  data = []; trail = []; calibPts = []; pxPerM = null;
+  $('scaleOut').textContent = 'belum dikalibrasi'; $('fit').textContent = '';
+  drawChart(); setStatus('Data dan kalibrasi dihapus.');
+};
+$('btnCSV').onclick = () => {
+  if (!data.length) { setStatus('Belum ada data untuk diunduh.'); return; }
+  const u = unit();
+  let csv = `t (s),x (${u}),y (${u})\n`;
+  for (const d of data) { const p = toPhys(d); csv += `${d.t.toFixed(3)},${p.x.toFixed(4)},${p.y.toFixed(4)}\n`; }
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+  a.download = 'data-pelacak-warna.csv';
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+};
+$('tol').oninput = e => $('tolVal').textContent = e.target.value;
+$('minPix').oninput = e => $('minPixVal').textContent = e.target.value;
+
+/* ---------- Fit kuadratik y(t) = a + b·t + c·t² → percepatan = 2c ---------- */
+function showFit() {
+  if (data.length < 6) { $('fit').textContent = ''; return; }
+  const ts = data.map(d => d.t), ys = data.map(d => toPhys(d).y);
+  const tm = ts.reduce((a, b) => a + b, 0) / ts.length;
+  const S = [0, 0, 0, 0, 0], Q = [0, 0, 0];
+  for (let i = 0; i < ts.length; i++) {
+    const t = ts[i] - tm; let tp = 1;
+    for (let k = 0; k < 5; k++) { S[k] += tp; tp *= t; }
+    Q[0] += ys[i]; Q[1] += ys[i] * t; Q[2] += ys[i] * t * t;
+  }
+  const det3 = m => m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1])
+                  - m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0])
+                  + m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0]);
+  const M = [[S[0], S[1], S[2]], [S[1], S[2], S[3]], [S[2], S[3], S[4]]];
+  const D = det3(M);
+  if (Math.abs(D) < 1e-12) return;
+  const Mc = M.map((row, i) => [row[0], row[1], Q[i]]);
+  const c = det3(Mc) / D;
+  $('fit').textContent = `Percepatan vertikal (fit kuadratik): a_y ≈ ${fmt(2 * c)} ${unit()}/s²`
+    + (pxPerM ? '' : ' — lakukan kalibrasi untuk satuan m/s²');
+}
+
+/* ---------- Grafik ---------- */
+function drawChart() {
+  const c = $('chart'), dpr = window.devicePixelRatio || 1;
+  const w = c.clientWidth, h = c.clientHeight;
+  if (c.width !== Math.round(w * dpr) || c.height !== Math.round(h * dpr)) {
+    c.width = Math.round(w * dpr); c.height = Math.round(h * dpr);
+  }
+  const g = c.getContext('2d');
+  g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, w, h);
+  const css = getComputedStyle(document.documentElement);
+  const muted = css.getPropertyValue('--muted').trim(), line = css.getPropertyValue('--line').trim();
+  const cY = css.getPropertyValue('--accent').trim(), cX = css.getPropertyValue('--accent2').trim();
+  g.font = '12px system-ui, sans-serif';
+  const L = 56, R = 12, T = 22, B = 32, pw = w - L - R, ph = h - T - B;
+
+  if (data.length < 2) {
+    g.fillStyle = muted; g.textAlign = 'center';
+    g.fillText('Belum ada data. Tekan “Rekam”, lalu gerakkan benda.', w / 2, h / 2);
+    return;
+  }
+  const pts = data.map(d => { const p = toPhys(d); return { t: d.t, x: p.x, y: p.y }; });
+  const tMin = pts[0].t, tMax = pts[pts.length - 1].t;
+  let vMin = Infinity, vMax = -Infinity;
+  for (const p of pts) { vMin = Math.min(vMin, p.x, p.y); vMax = Math.max(vMax, p.x, p.y); }
+  if (vMax - vMin < 1e-9) { vMax += 1; vMin -= 1; }
+  const pad = (vMax - vMin) * 0.06; vMin -= pad; vMax += pad;
+  const X = t => L + (t - tMin) / ((tMax - tMin) || 1) * pw;
+  const Y = v => T + ph - (v - vMin) / (vMax - vMin) * ph;
+
+  g.strokeStyle = line; g.fillStyle = muted; g.lineWidth = 1;
+  g.textAlign = 'right'; g.textBaseline = 'middle';
+  for (let k = 0; k <= 4; k++) {
+    const v = vMin + (vMax - vMin) * k / 4, yy = Y(v);
+    g.beginPath(); g.moveTo(L, yy); g.lineTo(L + pw, yy); g.stroke();
+    g.fillText(fmt(v), L - 6, yy);
+  }
+  g.textAlign = 'center'; g.textBaseline = 'top';
+  for (let k = 0; k <= 5; k++) {
+    const t = tMin + (tMax - tMin) * k / 5;
+    g.fillText(t.toFixed(2), X(t), T + ph + 6);
+  }
+  g.fillText('t (s)', L + pw / 2, T + ph + 18 > h - 12 ? h - 12 : T + ph + 18);
+
+  const series = (key, color) => {
+    g.strokeStyle = color; g.lineWidth = 2; g.beginPath();
+    pts.forEach((p, i) => i ? g.lineTo(X(p.t), Y(p[key])) : g.moveTo(X(p.t), Y(p[key])));
+    g.stroke();
+  };
+  series('x', cX); series('y', cY);
+
+  g.textAlign = 'left'; g.textBaseline = 'middle'; g.font = '13px system-ui, sans-serif';
+  g.fillStyle = cY; g.fillRect(L, 6, 14, 4); g.fillText(`y (${unit()})`, L + 20, 8);
+  g.fillStyle = cX; g.fillRect(L + 90, 6, 14, 4); g.fillText(`x (${unit()})`, L + 110, 8);
+}
+
+window.addEventListener('resize', drawChart);
+drawChart();
+</script>
+</body>
+</html>
